@@ -24,6 +24,12 @@ func SubscribeJSON[T any](
 		return err
 	} 
 
+	//Limiting prefetch count to 10 
+	err = channel.Qos(10, 0, false)
+	if err != nil {
+		return err
+	}
+
 	// Start consuming messages from the queue.
 	deliveries, err := channel.Consume(queue.Name, "", false, false, false, false, nil)
 	if err != nil {

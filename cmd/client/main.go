@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"strconv"
 	"time"
 
 	gamelogic "github.com/bootdotdev/learn-pub-sub-starter/internal/gamelogic"
@@ -112,8 +113,20 @@ func main() {
 			gamelogic.PrintClientHelp()
 
 		case "spam":
-			fmt.Printf("spamming not allowed\n")
-
+			if len(words) == 1 {
+				continue
+			} 
+			n, err := strconv.Atoi(words[1])
+			if err != nil {
+				continue 
+			}
+			for range n {
+				mallog := gamelogic.GetMaliciousLog()
+				err = publishLog(gameState, mallog)
+				if err != nil {
+					fmt.Printf("error publishing spam message\n")
+				}
+			}
 		case "quit":
 			gamelogic.PrintQuit()
 			return
@@ -179,21 +192,24 @@ func handlerWar(gs *gamelogic.GameState) func(gamelogic.RecognitionOfWar) pubsub
 			return pubsub.NackDiscard
 
 		case gamelogic.WarOutcomeOpponentWon:
-			err := publishLog(gs, winner, loser, false)
+			logMessage := fmt.Sprintf("%s won a war against %s", winner, loser)
+			err := publishLog(gs, logMessage)
 			if err != nil {
 				return pubsub.NackRequeue
 			}
 			return pubsub.Ack
 
 		case gamelogic.WarOutcomeYouWon:
-			err := publishLog(gs, winner, loser, false)
+			logMessage := fmt.Sprintf("%s won a war against %s", winner, loser)
+			err := publishLog(gs, logMessage)
 			if err != nil {
 				return pubsub.NackRequeue
 			}
 			return pubsub.Ack
 
 		case gamelogic.WarOutcomeDraw:
-			err := publishLog(gs, winner, loser, true)
+			logMessage := fmt.Sprintf("%s and %s resulted in a draw", winner, loser)
+			err := publishLog(gs, logMessage)
 			if err != nil {
 				return pubsub.NackRequeue
 			}
@@ -207,14 +223,7 @@ func handlerWar(gs *gamelogic.GameState) func(gamelogic.RecognitionOfWar) pubsub
 }
 
 
-func publishLog(gs *gamelogic.GameState, winner, loser string, isDraw bool) error {
-	var logMessage string 
-	if !isDraw {
-		logMessage = fmt.Sprintf("%s won a war against %s", winner, loser)
-	} else {
-		logMessage = fmt.Sprintf("%s and %s resulted in a draw", winner, loser)
-	}
-
+func publishLog(gs *gamelogic.GameState, logMessage string) error {
 	channel, err := conn.Channel()
 	if err != nil {
 		return err
