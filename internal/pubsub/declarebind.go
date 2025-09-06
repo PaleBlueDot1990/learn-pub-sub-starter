@@ -27,7 +27,9 @@ func DeclareAndBind(
 	exclusive := queueType == Transient
 
 	// Declare the queue with the computed options.
-	queue, err := channel.QueueDeclare(queueName, durable, autoDelete, exclusive, false, nil)
+	queue, err := channel.QueueDeclare(queueName, durable, autoDelete, exclusive, false, amqp.Table{
+		"x-dead-letter-exchange" : "peril_dlx",
+	})
 	if err != nil {
 		return nil, amqp.Queue{}, err
 	}

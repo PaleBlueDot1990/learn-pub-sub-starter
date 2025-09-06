@@ -19,12 +19,15 @@ var resumePublish = routing.PlayingState{
 	IsPaused: false,
 }
 
+var conn *amqp.Connection
+
 func main() {
+	var err error 
 	fmt.Println("Starting Peril server...")
 
 	// Connect to RabbitMQ.
 	connectionString := "amqp://guest:guest@localhost:5672/"
-	conn, err := amqp.Dial(connectionString)
+	conn, err = amqp.Dial(connectionString)
 	if err != nil {
 		fmt.Printf("failed to connect to RabbitMQ: %v\n", err)
 		return
@@ -32,32 +35,21 @@ func main() {
 	defer conn.Close()
 	fmt.Printf("connected to RabbitMQ at %s\n", connectionString)
 
-	// Open a channel on the connection.
-	channel, err := conn.Channel()
+	// Create a durable queue that subscribes to log messages.
+	queueName := routing.GameLogSlug
+	key := routing.GameLogSlug + ".*"
+	err = pubsub.SubscribeGob(
+		conn,
+		routing.ExchangePerilTopic,
+		queueName,
+		key,
+		pubsub.Durable,
+		handlerLog(),
+	)
 	if err != nil {
-		fmt.Printf("failed to open channel: %v\n", err)
+		fmt.Printf("failed to subscribe to RabbitMQ: %v\n", err)
 		return
 	}
-	defer channel.Close()
-	fmt.Printf("channel opened on RabbitMQ connection\n")
-
-	// Declare a durable queue for game logs.
-	queue, err := channel.QueueDeclare(routing.GameLogSlug, true, false, false, false, nil)
-	if err != nil {
-		fmt.Printf("failed to declare queue %s: %v\n", routing.GameLogSlug, err)
-		return
-	}
-
-	// Bind the queue to the topic exchange using the routing key pattern.
-	bindingKey := routing.GameLogSlug + ".*"
-	err = channel.QueueBind(queue.Name, bindingKey, routing.ExchangePerilTopic, false, nil)
-	if err != nil {
-		fmt.Printf("failed to bind queue %s to exchange %s with key %s: %v\n", queue.Name, routing.ExchangePerilTopic, bindingKey, err)
-		return
-	}
-
-	fmt.Printf("queue declared and bound successfully\n")
-	fmt.Printf("|Exchange: %s| -> |Binding Key: %s| -> |Queue: %s|\n", routing.ExchangePerilTopic, bindingKey, queue.Name)
 
 	// Print REPL help and start accepting commands.
 	gamelogic.PrintServerHelp()
@@ -73,6 +65,7 @@ func main() {
 		case "pause":
 			// Publish a pause message to all clients.
 			fmt.Printf("publishing pause message to clients\n")
+		    channel, _ := conn.Channel()
 			err = pubsub.PublishJSON(channel, routing.ExchangePerilDirect, routing.PauseKey, pausePublish)
 			if err != nil {
 				fmt.Printf("failed to publish pause message: %v\n", err)
@@ -83,6 +76,7 @@ func main() {
 		case "resume":
 			// Publish a resume message to all clients.
 			fmt.Printf("publishing resume message to clients\n")
+			channel, _ := conn.Channel()
 			err = pubsub.PublishJSON(channel, routing.ExchangePerilDirect, routing.PauseKey, resumePublish)
 			if err != nil {
 				fmt.Printf("failed to publish resume message: %v\n", err)
@@ -97,5 +91,18 @@ func main() {
 		default:
 			fmt.Printf("unrecognized command: %s\n", words[0])
 		}
+	}
+}
+
+func handlerLog() func(gamelog routing.GameLog) pubsub.AckType {
+	return func(gamelog routing.GameLog) pubsub.AckType {
+		defer fmt.Print("> ")
+
+		err := gamelogic.WriteLog(gamelog)
+		if err != nil {
+			fmt.Printf("error writing log: %v\n", err)
+			return pubsub.NackRequeue
+		}
+		return pubsub.Ack
 	}
 }

@@ -1,15 +1,16 @@
 package pubsub
 
 import (
-	"encoding/json"
+	"bytes"
+	"encoding/gob"
 	"fmt"
 
 	amqp "github.com/rabbitmq/amqp091-go"
 )
 
-// SubscribeJSON sets up a consumer that receives JSON messages from the given
+// SubscribeGob sets up a consumer that receives Gob messages from the given
 // exchange/key and delivers deserialized values of type T to handler.
-func SubscribeJSON[T any](
+func SubscribeGob[T any](
 	conn *amqp.Connection,
 	exchangeName,
 	queueName,
@@ -31,20 +32,23 @@ func SubscribeJSON[T any](
 	}
 
 	// Deliver messages to the handler in a separate goroutine.
-	go deliverMessage(deliveries, handler)
+	go deliverMessageGob(deliveries, handler)
 	return nil
 }
 
-// deliverMessage reads from the AMQP deliveries channel, unmarshals each
+// deliverMessage reads from the AMQP deliveries channel, deserializes each
 // delivery body into type T, invokes handler, and acknowledges the delivery.
-func deliverMessage[T any](deliveries <-chan amqp.Delivery, handler func(T) AckType) {
+func deliverMessageGob[T any](deliveries <-chan amqp.Delivery, handler func(T) AckType) {
 	for delivery := range deliveries {
-		var message T
+		var buf bytes.Buffer
+		buf.Write(delivery.Body)
+		dec := gob.NewDecoder(&buf)
 
-		err := json.Unmarshal(delivery.Body, &message)
+		var message T
+		err := dec.Decode(&message)
 		if err != nil {
 			// log the error and ACK to avoid requeues
-			fmt.Printf("failed to unmarshal message body: %v — acking to discard\n", err)
+			fmt.Printf("failed to decode message body: %v — acking to discard\n", err)
 			delivery.Ack(false)
 			continue
 		}
