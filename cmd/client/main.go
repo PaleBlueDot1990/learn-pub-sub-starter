@@ -137,7 +137,7 @@ func main() {
 	}
 }
 
-
+// Handler function to execute when pause/resume messages are consumed. 
 func handlerPause(gs *gamelogic.GameState) func(routing.PlayingState) pubsub.AckType {
     return func(s routing.PlayingState) pubsub.AckType {
         gs.HandlePause(s)     
@@ -146,7 +146,7 @@ func handlerPause(gs *gamelogic.GameState) func(routing.PlayingState) pubsub.Ack
     }
 }
 
-
+// Handler function to execute when move messages are consumed. 
 func handlerMove(gs *gamelogic.GameState) func(gamelogic.ArmyMove) pubsub.AckType {
     return func(move gamelogic.ArmyMove) pubsub.AckType {
         moveoutCome := gs.HandleMove(move)     
@@ -178,7 +178,7 @@ func handlerMove(gs *gamelogic.GameState) func(gamelogic.ArmyMove) pubsub.AckTyp
     }
 }
 
-
+// Handler function to execute when war messages are consumed. 
 func handlerWar(gs *gamelogic.GameState) func(gamelogic.RecognitionOfWar) pubsub.AckType {
 	return func(recWar gamelogic.RecognitionOfWar) pubsub.AckType {
 		outcome, winner, loser := gs.HandleWar(recWar)
